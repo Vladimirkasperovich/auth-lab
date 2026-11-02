@@ -1,13 +1,21 @@
-import { ConflictException, Injectable } from "@nestjs/common";
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { UserDto } from "../user/dto/user.dto.js";
-import { hash } from "argon2";
-import { RegisterDto } from "../dto/register.dto.js";
-import { LoginDto } from "../dto/login.dto.js";
+import { hash, verify } from "argon2";
+import { RegisterDto } from "./dto/register.dto.js";
+import { LoginDto } from "./dto/login.dto.js";
+import { JwtService } from "@nestjs/jwt";
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly jwtService: JwtService,
+  ) {}
 
   async register(
     dto: RegisterDto,
@@ -38,6 +46,24 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    dto.email;
+    const { password, email } = dto;
+
+    const user = await this.prismaService.user.findUnique({ where: { email } });
+
+    if (!user) {
+      throw new UnauthorizedException("Неверный email или пароль");
+    }
+
+    const isPasswordValid = await verify(user.password, password);
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedException("Неверный email или пароль");
+    }
+
+    const accessToken = await this.jwtService.signAsync({
+      sub: user.id,
+    });
+
+    return { accessToken };
   }
 }
